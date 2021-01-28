@@ -31,6 +31,14 @@ type gameEngine struct {
 	beatCounter  int
 	playing      bool
 	currentGroup string
+	cursor       [2]int
+}
+
+type rect struct {
+	x      float64
+	y      float64
+	width  float64
+	height float64
 }
 
 func (g *gameEngine) playSequence() {
@@ -54,19 +62,68 @@ func (g *gameEngine) Draw(screen *ebiten.Image) {
 	incrementY := 50.0 / 5
 	offsetY := incrementY
 	for i := 0.0; i < 16; i++ {
-		ebitenutil.DrawLine(screen, offsetX+(i*incrementX), 0, offsetX+(i*incrementX), 50, color.White)
+		clr := color.RGBA{255, 255, 255, 255}
+		if int(i)%4 == 0 {
+			clr = color.RGBA{100, 255, 0, 150}
+		}
+		ebitenutil.DrawLine(screen, offsetX+(i*incrementX), 0, offsetX+(i*incrementX), 50, clr)
 	}
 	for i := 0.0; i < 5; i++ {
 		ebitenutil.DrawLine(screen, offsetX, offsetY+(incrementY*i), screenWidth-incrementX, offsetY+(incrementY*i), color.White)
 	}
 	if g.beatCounter != -1 {
+		rects := g.getSequenceRects()
 		sequenceIndex := g.beatCounter % 16
-		for _, audioIndex := range g.sequences[g.currentGroup][sequenceIndex] {
-			if audioIndex != -1 {
-				ebitenutil.DrawRect(screen, offsetX+(float64(sequenceIndex)*incrementX)-5, offsetY+(float64(audioIndex)*incrementY)-5, 10, 10, color.RGBA{255, 0, 255, 255})
+		for i, sequence := range g.sequences[g.currentGroup] {
+			for _, audioIndex := range sequence {
+				if audioIndex != -1 {
+					cursor := [2]int{i, audioIndex}
+					clr := color.RGBA{255, 0, 255, 150}
+					if sequenceIndex == i {
+						clr = color.RGBA{255, 0, 255, 255}
+					}
+					ebitenutil.DrawRect(screen, rects[cursor].x, rects[cursor].y, rects[cursor].width, rects[cursor].height, clr)
+				}
+			}
+		}
+		cursorRect, ok := rects[g.cursor]
+		if ok {
+			ebitenutil.DrawRect(screen, cursorRect.x, cursorRect.y, cursorRect.width, cursorRect.height, color.RGBA{255, 255, 0, 150})
+		}
+		offsetX := 35.0
+		incrementX := (screenWidth - offsetX) / 16
+		ebitenutil.DrawRect(screen, offsetX+incrementX*float64(sequenceIndex)-2.5, 60, 5, 5, color.RGBA{255, 255, 0, 150})
+	}
+}
+
+func (g *gameEngine) getSequenceRects() map[[2]int]rect {
+	offsetX := 35.0
+	incrementX := (screenWidth - offsetX) / 16
+	incrementY := 50.0 / 5
+	offsetY := incrementY
+	rects := map[[2]int]rect{}
+	for i := 0; i < 16; i++ {
+		for j := 0; j < 5; j++ {
+			cursor := [2]int{i, j}
+			rects[cursor] = rect{
+				offsetX + (float64(i) * incrementX) - 5,
+				offsetY + (float64(j) * incrementY) - 5,
+				10,
+				10,
 			}
 		}
 	}
+	return rects
+}
+
+func isColliding(r1, r2 rect) bool {
+	if r1.x < r2.x+r2.width &&
+		r1.x+r1.width > r2.x &&
+		r1.y < r2.y+r2.height &&
+		r1.y+r1.height > r2.y {
+		return true
+	}
+	return false
 }
 
 func (g *gameEngine) Update() error {
@@ -75,6 +132,38 @@ func (g *gameEngine) Update() error {
 			g.stopSequence()
 		} else {
 			g.playSequence()
+		}
+	}
+	mouseX, mouseY := ebiten.CursorPosition()
+	mouseRect := rect{
+		x:      float64(mouseX),
+		y:      float64(mouseY),
+		width:  1,
+		height: 1,
+	}
+	hovering := false
+	for cursor, sequenceRect := range g.getSequenceRects() {
+		if isColliding(sequenceRect, mouseRect) {
+			g.cursor = cursor
+			hovering = true
+		}
+	}
+	if !hovering {
+		g.cursor = [2]int{-1, -1}
+	}
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && g.cursor != [2]int{-1, -1} {
+		sliceIndex := -1
+		for i, audioIndex := range g.sequences[g.currentGroup][g.cursor[0]] {
+			if audioIndex == g.cursor[1] {
+				sliceIndex = i
+				break
+			}
+		}
+		if sliceIndex != -1 {
+			g.sequences[g.currentGroup][g.cursor[0]] = append(g.sequences[g.currentGroup][g.cursor[0]][:sliceIndex], g.sequences[g.currentGroup][g.cursor[0]][sliceIndex+1:]...)
+		} else {
+			log.Print(g.cursor[1])
+			g.sequences[g.currentGroup][g.cursor[0]] = append(g.sequences[g.currentGroup][g.cursor[0]], g.cursor[1])
 		}
 	}
 	g.frame++
@@ -125,6 +214,7 @@ func newGameEngine() *gameEngine {
 		groups:       []string{"drum"},
 		sequences:    map[string][][]int{},
 		currentGroup: "drum",
+		cursor:       [2]int{-1, -1},
 	}
 
 	for _, group := range g.groups {
@@ -137,9 +227,9 @@ func newGameEngine() *gameEngine {
 		}
 	}
 
-	g.sequences["drum"] = [][]int{
-		{0}, {2}, {1, 3}, {3}, {0}, {3, 0}, {1, 3}, {4}, {0}, {2, 0}, {3, 1}, {3}, {0}, {3}, {1, 3}, {4},
-	}
+	// g.sequences["drum"] = [][]int{
+	// 	{0}, {2}, {1, 3}, {3}, {0}, {3, 0}, {1, 3}, {4}, {0}, {2, 0}, {3, 1}, {3}, {0}, {3}, {1, 3}, {4},
+	// }
 	// g.sequences["drum"] = [][]int{
 	// 	{0}, {0}, {0}, {0}, {0}, {0}, {0}, {0}, {0}, {0}, {0}, {0}, {0}, {0}, {0}, {0},
 	// }
