@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"image/color"
 	_ "image/png"
 	"io/ioutil"
 	"log"
@@ -11,6 +12,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/audio/wav"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
@@ -21,13 +23,14 @@ const (
 )
 
 type gameEngine struct {
-	frame       int
-	audio       map[string][]*audio.Player
-	sequences   map[string][][]int
-	groups      []string
-	startTime   time.Time
-	beatCounter int
-	playing     bool
+	frame        int
+	audio        map[string][]*audio.Player
+	sequences    map[string][][]int
+	groups       []string
+	startTime    time.Time
+	beatCounter  int
+	playing      bool
+	currentGroup string
 }
 
 func (g *gameEngine) playSequence() {
@@ -36,16 +39,43 @@ func (g *gameEngine) playSequence() {
 	g.playing = true
 }
 
+func (g *gameEngine) stopSequence() {
+	g.playing = false
+}
+
 func (g *gameEngine) playAudio(group string, index int) {
 	g.audio[group][index].Rewind()
 	g.audio[group][index].Play()
 }
 
-func (g *gameEngine) Draw(screen *ebiten.Image) {}
+func (g *gameEngine) Draw(screen *ebiten.Image) {
+	offsetX := 35.0
+	incrementX := (screenWidth - offsetX) / 16
+	incrementY := 50.0 / 5
+	offsetY := incrementY
+	for i := 0.0; i < 16; i++ {
+		ebitenutil.DrawLine(screen, offsetX+(i*incrementX), 0, offsetX+(i*incrementX), 50, color.White)
+	}
+	for i := 0.0; i < 5; i++ {
+		ebitenutil.DrawLine(screen, offsetX, offsetY+(incrementY*i), screenWidth-incrementX, offsetY+(incrementY*i), color.White)
+	}
+	if g.beatCounter != -1 {
+		sequenceIndex := g.beatCounter % 16
+		for _, audioIndex := range g.sequences[g.currentGroup][sequenceIndex] {
+			if audioIndex != -1 {
+				ebitenutil.DrawRect(screen, offsetX+(float64(sequenceIndex)*incrementX)-5, offsetY+(float64(audioIndex)*incrementY)-5, 10, 10, color.RGBA{255, 0, 255, 255})
+			}
+		}
+	}
+}
 
 func (g *gameEngine) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
-		g.playSequence()
+		if g.playing {
+			g.stopSequence()
+		} else {
+			g.playSequence()
+		}
 	}
 	g.frame++
 	return nil
@@ -91,9 +121,10 @@ func main() {
 
 func newGameEngine() *gameEngine {
 	g := &gameEngine{
-		audio:     map[string][]*audio.Player{},
-		groups:    []string{"drum"},
-		sequences: map[string][][]int{},
+		audio:        map[string][]*audio.Player{},
+		groups:       []string{"drum"},
+		sequences:    map[string][][]int{},
+		currentGroup: "drum",
 	}
 
 	for _, group := range g.groups {
