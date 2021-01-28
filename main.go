@@ -90,8 +90,6 @@ func (g *gameEngine) Draw(screen *ebiten.Image) {
 		if ok {
 			ebitenutil.DrawRect(screen, cursorRect.x, cursorRect.y, cursorRect.width, cursorRect.height, color.RGBA{255, 255, 0, 150})
 		}
-		offsetX := 35.0
-		incrementX := (screenWidth - offsetX) / 16
 		ebitenutil.DrawRect(screen, offsetX+incrementX*float64(sequenceIndex)-2.5, 60, 5, 5, color.RGBA{255, 255, 0, 150})
 	}
 }
@@ -162,7 +160,6 @@ func (g *gameEngine) Update() error {
 		if sliceIndex != -1 {
 			g.sequences[g.currentGroup][g.cursor[0]] = append(g.sequences[g.currentGroup][g.cursor[0]][:sliceIndex], g.sequences[g.currentGroup][g.cursor[0]][sliceIndex+1:]...)
 		} else {
-			log.Print(g.cursor[1])
 			g.sequences[g.currentGroup][g.cursor[0]] = append(g.sequences[g.currentGroup][g.cursor[0]], g.cursor[1])
 		}
 	}
@@ -178,21 +175,21 @@ func (g *gameEngine) sequencer() {
 	for {
 		if g.playing {
 			elapsed := time.Now().Sub(g.startTime)
-			bps := 60 / float64(bpm)
+			bps := 60 / float64(bpm) / 4
 			beatCounter := int(elapsed.Seconds() / bps)
 			if beatCounter != g.beatCounter {
 				sequenceIndex := beatCounter % 16
 				for _, group := range g.groups {
 					for _, audioIndex := range g.sequences[group][sequenceIndex] {
 						if audioIndex != -1 {
-							g.playAudio(group, audioIndex)
+							go g.playAudio(group, audioIndex)
 						}
 					}
 				}
 			}
 			g.beatCounter = beatCounter
 		}
-		time.Sleep(time.Millisecond * 50)
+		time.Sleep(time.Millisecond)
 	}
 }
 
