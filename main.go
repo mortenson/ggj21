@@ -11,6 +11,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/audio/wav"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 const (
@@ -26,6 +27,13 @@ type gameEngine struct {
 	groups      []string
 	startTime   time.Time
 	beatCounter int
+	playing     bool
+}
+
+func (g *gameEngine) playSequence() {
+	g.startTime = time.Now()
+	g.beatCounter = -1
+	g.playing = true
 }
 
 func (g *gameEngine) playAudio(group string, index int) {
@@ -36,6 +44,9 @@ func (g *gameEngine) playAudio(group string, index int) {
 func (g *gameEngine) Draw(screen *ebiten.Image) {}
 
 func (g *gameEngine) Update() error {
+	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		g.playSequence()
+	}
 	g.frame++
 	return nil
 }
@@ -46,21 +57,23 @@ func (g *gameEngine) Layout(outsideWidth, outsideHeight int) (int, int) {
 
 func (g *gameEngine) sequencer() {
 	for {
-		elapsed := time.Now().Sub(g.startTime)
-		bps := 60 / float64(bpm)
-		beatCounter := int(elapsed.Seconds() / bps)
-		if beatCounter != g.beatCounter {
-			sequenceIndex := beatCounter % 16
-			for _, group := range g.groups {
-				for _, audioIndex := range g.sequences[group][sequenceIndex] {
-					if audioIndex != -1 {
-						g.playAudio(group, audioIndex)
+		if g.playing {
+			elapsed := time.Now().Sub(g.startTime)
+			bps := 60 / float64(bpm)
+			beatCounter := int(elapsed.Seconds() / bps)
+			if beatCounter != g.beatCounter {
+				sequenceIndex := beatCounter % 16
+				for _, group := range g.groups {
+					for _, audioIndex := range g.sequences[group][sequenceIndex] {
+						if audioIndex != -1 {
+							g.playAudio(group, audioIndex)
+						}
 					}
 				}
 			}
+			g.beatCounter = beatCounter
 		}
-		g.beatCounter = beatCounter
-		time.Sleep(time.Millisecond * 100)
+		time.Sleep(time.Millisecond * 50)
 	}
 }
 
@@ -78,11 +91,9 @@ func main() {
 
 func newGameEngine() *gameEngine {
 	g := &gameEngine{
-		audio:       map[string][]*audio.Player{},
-		startTime:   time.Now(),
-		beatCounter: -1,
-		groups:      []string{"drum"},
-		sequences:   map[string][][]int{},
+		audio:     map[string][]*audio.Player{},
+		groups:    []string{"drum"},
+		sequences: map[string][][]int{},
 	}
 
 	for _, group := range g.groups {
