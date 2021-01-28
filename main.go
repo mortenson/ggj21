@@ -132,6 +132,12 @@ func (g *gameEngine) Update() error {
 			g.playSequence()
 		}
 	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyP) {
+		g.currentGroup = "piano"
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyD) {
+		g.currentGroup = "drum"
+	}
 	mouseX, mouseY := ebiten.CursorPosition()
 	mouseRect := rect{
 		x:      float64(mouseX),
@@ -208,7 +214,7 @@ func main() {
 func newGameEngine() *gameEngine {
 	g := &gameEngine{
 		audio:        map[string][]*audio.Player{},
-		groups:       []string{"drum"},
+		groups:       []string{"drum", "piano"},
 		sequences:    map[string][][]int{},
 		currentGroup: "drum",
 		cursor:       [2]int{-1, -1},
@@ -240,6 +246,13 @@ func newGameEngine() *gameEngine {
 			"audio/drum/stick.wav",
 			"audio/drum/hihat.wav",
 			"audio/drum/hihat_open.wav",
+		},
+		"piano": []string{
+			"audio/piano/f.wav",
+			"audio/piano/d.wav",
+			"audio/piano/b.wav",
+			"audio/piano/g.wav",
+			"audio/piano/e.wav",
 		},
 	}
 	for group, fileNames := range audioFiles {
