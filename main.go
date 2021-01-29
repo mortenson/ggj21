@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"image"
 	"image/color"
 	_ "image/png"
 	"io/ioutil"
@@ -9,11 +10,13 @@ import (
 	"os"
 	"time"
 
+	"github.com/hajimehoshi/bitmapfont"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/audio/wav"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"github.com/hajimehoshi/ebiten/v2/text"
 )
 
 const (
@@ -22,16 +25,48 @@ const (
 	bpm          = 120
 )
 
+type sprite struct {
+	image     *ebiten.Image
+	frame     int
+	numFrames int
+	playing   bool
+	x         float64
+	y         float64
+	width     int
+	height    int
+}
+
+func (s *sprite) draw(screen *ebiten.Image) {
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(s.x, s.y)
+	screen.DrawImage(s.image, op)
+}
+
+func (s *sprite) getRect() rect {
+	return rect{
+		x:      s.x,
+		y:      s.y,
+		width:  float64(s.width),
+		height: float64(s.height),
+	}
+}
+
 type gameEngine struct {
-	frame        int
-	audio        map[string][]*audio.Player
-	sequences    map[string][][]int
-	groups       []string
-	startTime    time.Time
-	beatCounter  int
-	playing      bool
-	currentGroup string
-	cursor       [2]int
+	frame         int
+	audio         map[string][]*audio.Player
+	audioLabels   map[string][]string
+	sequences     map[string][][]int
+	groups        []string
+	startTime     time.Time
+	beatCounter   int
+	playing       bool
+	currentGroup  string
+	cursor        [2]int
+	images        map[string]*ebiten.Image
+	sprites       map[string]*sprite
+	dialogueOpen  bool
+	dialogue      []string
+	dialogueIndex int
 }
 
 type rect struct {
@@ -57,19 +92,34 @@ func (g *gameEngine) playAudio(group string, index int) {
 }
 
 func (g *gameEngine) Draw(screen *ebiten.Image) {
-	offsetX := 35.0
+	screen.DrawImage(g.images["bandroom"], &ebiten.DrawImageOptions{})
+	g.sprites["pianoman"].draw(screen)
+	g.sprites["drummer"].draw(screen)
+	if g.dialogueOpen {
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(5, screenHeight-50)
+		screen.DrawImage(g.images["menubox"], op)
+		text.Draw(screen, g.dialogue[g.dialogueIndex], bitmapfont.Gothic12r, 35, screenHeight-25, color.Black)
+	}
+	if g.currentGroup == "" {
+		return
+	}
+	offsetX := 55.0
 	incrementX := (screenWidth - offsetX) / 16
 	incrementY := 50.0 / 5
 	offsetY := incrementY
-	for i := 0.0; i < 16; i++ {
+	for i := 0; i < 16; i++ {
 		clr := color.RGBA{255, 255, 255, 255}
 		if int(i)%4 == 0 {
 			clr = color.RGBA{100, 255, 0, 150}
 		}
-		ebitenutil.DrawLine(screen, offsetX+(i*incrementX), 0, offsetX+(i*incrementX), 50, clr)
+		ebitenutil.DrawLine(screen, offsetX+(float64(i)*incrementX), 0, offsetX+(float64(i)*incrementX), 50, clr)
 	}
-	for i := 0.0; i < 5; i++ {
-		ebitenutil.DrawLine(screen, offsetX, offsetY+(incrementY*i), screenWidth-incrementX, offsetY+(incrementY*i), color.White)
+	for i := 0; i < 5; i++ {
+		y := offsetY + (incrementY * float64(i))
+		ebitenutil.DrawLine(screen, offsetX, y, screenWidth-incrementX, y, color.White)
+		textBounds := text.BoundString(bitmapfont.Gothic10r, g.audioLabels[g.currentGroup][i])
+		text.Draw(screen, g.audioLabels[g.currentGroup][i], bitmapfont.Gothic10r, int(offsetX)-textBounds.Max.X-8, int(y)+3, color.White)
 	}
 	if g.beatCounter != -1 {
 		rects := g.getSequenceRects()
@@ -95,7 +145,7 @@ func (g *gameEngine) Draw(screen *ebiten.Image) {
 }
 
 func (g *gameEngine) getSequenceRects() map[[2]int]rect {
-	offsetX := 35.0
+	offsetX := 55.0
 	incrementX := (screenWidth - offsetX) / 16
 	incrementY := 50.0 / 5
 	offsetY := incrementY
@@ -125,48 +175,57 @@ func isColliding(r1, r2 rect) bool {
 }
 
 func (g *gameEngine) Update() error {
-	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
-		if g.playing {
-			g.stopSequence()
-		} else {
-			g.playSequence()
-		}
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyP) {
-		g.currentGroup = "piano"
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyD) {
-		g.currentGroup = "drum"
-	}
-	mouseX, mouseY := ebiten.CursorPosition()
-	mouseRect := rect{
-		x:      float64(mouseX),
-		y:      float64(mouseY),
-		width:  1,
-		height: 1,
-	}
-	hovering := false
-	for cursor, sequenceRect := range g.getSequenceRects() {
-		if isColliding(sequenceRect, mouseRect) {
-			g.cursor = cursor
-			hovering = true
-		}
-	}
-	if !hovering {
-		g.cursor = [2]int{-1, -1}
-	}
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && g.cursor != [2]int{-1, -1} {
-		sliceIndex := -1
-		for i, audioIndex := range g.sequences[g.currentGroup][g.cursor[0]] {
-			if audioIndex == g.cursor[1] {
-				sliceIndex = i
-				break
+	if g.dialogueOpen {
+		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+			g.dialogueIndex++
+			if g.dialogueIndex >= len(g.dialogue) {
+				g.dialogueOpen = false
 			}
 		}
-		if sliceIndex != -1 {
-			g.sequences[g.currentGroup][g.cursor[0]] = append(g.sequences[g.currentGroup][g.cursor[0]][:sliceIndex], g.sequences[g.currentGroup][g.cursor[0]][sliceIndex+1:]...)
-		} else {
-			g.sequences[g.currentGroup][g.cursor[0]] = append(g.sequences[g.currentGroup][g.cursor[0]], g.cursor[1])
+	} else {
+		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) && g.currentGroup != "" {
+			if g.playing {
+				g.stopSequence()
+			} else {
+				g.playSequence()
+			}
+		}
+		mouseX, mouseY := ebiten.CursorPosition()
+		mouseRect := rect{
+			x:      float64(mouseX),
+			y:      float64(mouseY),
+			width:  1,
+			height: 1,
+		}
+		hovering := false
+		for cursor, sequenceRect := range g.getSequenceRects() {
+			if isColliding(sequenceRect, mouseRect) {
+				g.cursor = cursor
+				hovering = true
+			}
+		}
+		if !hovering {
+			g.cursor = [2]int{-1, -1}
+		}
+		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && g.cursor != [2]int{-1, -1} {
+			sliceIndex := -1
+			for i, audioIndex := range g.sequences[g.currentGroup][g.cursor[0]] {
+				if audioIndex == g.cursor[1] {
+					sliceIndex = i
+					break
+				}
+			}
+			if sliceIndex != -1 {
+				g.sequences[g.currentGroup][g.cursor[0]] = append(g.sequences[g.currentGroup][g.cursor[0]][:sliceIndex], g.sequences[g.currentGroup][g.cursor[0]][sliceIndex+1:]...)
+			} else {
+				g.sequences[g.currentGroup][g.cursor[0]] = append(g.sequences[g.currentGroup][g.cursor[0]], g.cursor[1])
+			}
+		}
+		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && isColliding(mouseRect, g.sprites["drummer"].getRect()) {
+			g.currentGroup = "drum"
+		}
+		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && isColliding(mouseRect, g.sprites["pianoman"].getRect()) {
+			g.currentGroup = "piano"
 		}
 	}
 	g.frame++
@@ -211,13 +270,49 @@ func main() {
 	}
 }
 
+func loadImage(filename string) *ebiten.Image {
+	file, err := os.Open(filename)
+	defer file.Close()
+	if err != nil {
+		panic(err)
+	}
+	byteValue, err := ioutil.ReadAll(file)
+	if err != nil {
+		panic(err)
+	}
+	img, _, err := image.Decode(bytes.NewReader(byteValue))
+	if err != nil {
+		panic(err)
+	}
+	return ebiten.NewImageFromImage(img)
+}
+
 func newGameEngine() *gameEngine {
 	g := &gameEngine{
 		audio:        map[string][]*audio.Player{},
+		audioLabels:  map[string][]string{},
 		groups:       []string{"drum", "piano"},
 		sequences:    map[string][][]int{},
-		currentGroup: "drum",
+		currentGroup: "",
+		beatCounter:  0,
 		cursor:       [2]int{-1, -1},
+		images:       map[string]*ebiten.Image{},
+		sprites:      map[string]*sprite{},
+		dialogueOpen: true,
+		dialogue: []string{
+			"Can't believe we have to record today...",
+			"We drank so much last night.",
+			"I remember writing a song.",
+			"I can't remember a thing...",
+			"Well we gotta use the studio time!",
+			"Let's wing it and remember as we go.",
+			"[Click on a band member to write music]",
+			"[Sequence notes with your mouse]",
+			"[Play/restart sequence with the ENTER key]",
+			"[Make sure your tune matches their memory]",
+			"[Set your own challenges and get creative]",
+		},
+		dialogueIndex: 0,
 	}
 
 	for _, group := range g.groups {
@@ -255,6 +350,22 @@ func newGameEngine() *gameEngine {
 			"audio/piano/e.wav",
 		},
 	}
+	g.audioLabels = map[string][]string{
+		"drum": {
+			"Kick",
+			"Snare",
+			"Stick",
+			"HiHat",
+			"OpenHat",
+		},
+		"piano": {
+			"f",
+			"d",
+			"b",
+			"g",
+			"e",
+		},
+	}
 	for group, fileNames := range audioFiles {
 		for _, fileName := range fileNames {
 			file, err := os.Open(fileName)
@@ -277,5 +388,32 @@ func newGameEngine() *gameEngine {
 			g.audio[group] = append(g.audio[group], player)
 		}
 	}
+
+	g.images["bandroom"] = loadImage("images/bandroom.png")
+	g.images["menubox"] = loadImage("images/menubox.png")
+
+	img := loadImage("images/drummer.png")
+	width, height := img.Size()
+	g.sprites["drummer"] = &sprite{
+		image:     img,
+		frame:     0,
+		numFrames: 1,
+		x:         218,
+		y:         100,
+		width:     width,
+		height:    height,
+	}
+	img = loadImage("images/pianoman.png")
+	width, height = img.Size()
+	g.sprites["pianoman"] = &sprite{
+		image:     img,
+		frame:     0,
+		numFrames: 1,
+		x:         148,
+		y:         97,
+		width:     width,
+		height:    height,
+	}
+
 	return g
 }
