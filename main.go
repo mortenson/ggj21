@@ -36,12 +36,20 @@ type sprite struct {
 	y         float64
 	width     int
 	height    int
+	speed     int
 }
 
 func (s *sprite) draw(screen *ebiten.Image) {
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(s.x, s.y)
-	screen.DrawImage(s.image, op)
+	img := ebiten.NewImageFromImage(s.image.SubImage(image.Rect(s.width*s.frame, 0, (s.width*s.frame)+s.width, s.height)))
+	screen.DrawImage(img, op)
+}
+
+func (s *sprite) update(frame int) {
+	if s.playing && frame%s.speed == 0 {
+		s.frame = (s.frame + 1) % s.numFrames
+	}
 }
 
 func (s *sprite) getRect() rect {
@@ -197,6 +205,9 @@ func isColliding(r1, r2 rect) bool {
 }
 
 func (g *gameEngine) Update() error {
+	for _, sprite := range g.sprites {
+		sprite.update(g.frame)
+	}
 	if g.dialogueOpen {
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 			g.dialogueIndex++
@@ -243,19 +254,29 @@ func (g *gameEngine) Update() error {
 				g.sequences[g.currentGroup][g.cursor[0]] = append(g.sequences[g.currentGroup][g.cursor[0]], g.cursor[1])
 			}
 		}
-		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && isColliding(mouseRect, g.sprites["drummer"].getRect()) {
-			g.currentGroup = "drum"
-			g.dialogue = []string{
-				"Can everyone, like, play quiter today?",
-				"Why did i ever learn drums...",
+		if isColliding(mouseRect, g.sprites["drummer"].getRect()) {
+			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+				g.currentGroup = "drum"
+				g.dialogue = []string{
+					"Can everyone, like, play quiter today?",
+					"Why did i ever learn drums...",
+				}
 			}
+			g.sprites["drummer"].playing = true
+		} else {
+			g.sprites["drummer"].playing = false
 		}
-		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && isColliding(mouseRect, g.sprites["pianoman"].getRect()) {
-			g.currentGroup = "piano"
-			g.dialogue = []string{
-				"Keep your head in the game",
-				"What key are we even in?",
+		if isColliding(mouseRect, g.sprites["pianoman"].getRect()) {
+			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+				g.currentGroup = "piano"
+				g.dialogue = []string{
+					"Keep your head in the game",
+					"What key are we even in?",
+				}
 			}
+			g.sprites["pianoman"].playing = true
+		} else {
+			g.sprites["pianoman"].playing = false
 		}
 		if g.currentGroup != "" && !g.dialogueShown[g.currentGroup] {
 			g.dialogueOpen = true
@@ -309,6 +330,10 @@ func (g *gameEngine) Update() error {
 			}
 		}
 	}
+	if g.playing && g.beatCounter != -1 {
+		g.sprites["drummer"].playing = len(g.sequences["drum"][g.beatCounter]) > 0
+		g.sprites["pianoman"].playing = len(g.sequences["piano"][g.beatCounter]) > 0
+	}
 	g.frame++
 	return nil
 }
@@ -322,11 +347,10 @@ func (g *gameEngine) sequencer() {
 		if g.playing {
 			elapsed := time.Now().Sub(g.startTime)
 			bps := 60 / float64(bpm) / 4
-			beatCounter := int(elapsed.Seconds() / bps)
+			beatCounter := int(elapsed.Seconds()/bps) % 16
 			if beatCounter != g.beatCounter {
-				sequenceIndex := beatCounter % 16
 				for _, group := range g.groups {
-					for _, audioIndex := range g.sequences[group][sequenceIndex] {
+					for _, audioIndex := range g.sequences[group][beatCounter] {
 						go g.playAudio(group, audioIndex)
 					}
 				}
@@ -496,18 +520,19 @@ func newGameEngine() *gameEngine {
 		y:         65,
 		width:     width,
 		height:    height,
+		speed:     5,
 	}
 
 	img = loadImage("images/drummer.png")
-	width, height = img.Size()
 	g.sprites["drummer"] = &sprite{
 		image:     img,
 		frame:     0,
-		numFrames: 1,
+		numFrames: 4,
 		x:         218,
 		y:         100,
-		width:     width,
-		height:    height,
+		width:     53,
+		height:    47,
+		speed:     5,
 	}
 	img = loadImage("images/pianoman.png")
 	width, height = img.Size()
@@ -519,6 +544,7 @@ func newGameEngine() *gameEngine {
 		y:         97,
 		width:     width,
 		height:    height,
+		speed:     5,
 	}
 
 	return g
