@@ -391,7 +391,7 @@ func main() {
 	ebiten.SetRunnableOnUnfocused(true)
 	ebiten.SetWindowSize(screenWidth*3, screenHeight*3)
 	ebiten.SetWindowResizable(true)
-	ebiten.SetWindowTitle("Studio Stupor")
+	ebiten.SetWindowTitle("Studio Stupor - by @mortensonsam")
 	go g.sequencer()
 	if err := ebiten.RunGame(g); err != nil {
 		log.Fatal(err)
