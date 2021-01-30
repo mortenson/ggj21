@@ -111,6 +111,7 @@ func (g *gameEngine) Draw(screen *ebiten.Image) {
 	screen.DrawImage(g.images["bandroom"], &ebiten.DrawImageOptions{})
 	g.sprites["pianoman"].draw(screen)
 	g.sprites["drummer"].draw(screen)
+	g.sprites["guitarist"].draw(screen)
 	if g.dialogueOpen {
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Translate(5, screenHeight-50)
@@ -278,6 +279,18 @@ func (g *gameEngine) Update() error {
 		} else {
 			g.sprites["pianoman"].playing = false
 		}
+		if isColliding(mouseRect, g.sprites["guitarist"].getRect()) {
+			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+				g.currentGroup = "guitar"
+				g.dialogue = []string{
+					"Can we turn the lights down?",
+					"Or off? My head...",
+				}
+			}
+			g.sprites["guitarist"].playing = true
+		} else {
+			g.sprites["guitarist"].playing = false
+		}
 		if g.currentGroup != "" && !g.dialogueShown[g.currentGroup] {
 			g.dialogueOpen = true
 			g.dialogueIndex = 0
@@ -333,6 +346,7 @@ func (g *gameEngine) Update() error {
 	if g.playing && g.beatCounter != -1 {
 		g.sprites["drummer"].playing = len(g.sequences["drum"][g.beatCounter]) > 0
 		g.sprites["pianoman"].playing = len(g.sequences["piano"][g.beatCounter]) > 0
+		g.sprites["guitarist"].playing = len(g.sequences["guitar"][g.beatCounter]) > 0
 	}
 	g.frame++
 	return nil
@@ -396,7 +410,7 @@ func newGameEngine() *gameEngine {
 	g := &gameEngine{
 		audio:         map[string][]*audio.Player{},
 		audioLabels:   map[string][]string{},
-		groups:        []string{"drum", "piano"},
+		groups:        []string{"drum", "piano", "guitar"},
 		sequences:     map[string][][]int{},
 		sequenceRules: map[string]map[int]int{},
 		currentGroup:  "",
@@ -467,6 +481,13 @@ func newGameEngine() *gameEngine {
 			"audio/piano/g.wav",
 			"audio/piano/e.wav",
 		},
+		"guitar": []string{
+			"audio/piano/f.wav",
+			"audio/piano/d.wav",
+			"audio/piano/b.wav",
+			"audio/piano/g.wav",
+			"audio/piano/e.wav",
+		},
 	}
 	g.audioLabels = map[string][]string{
 		"drum": {
@@ -477,6 +498,13 @@ func newGameEngine() *gameEngine {
 			"OpenHat",
 		},
 		"piano": {
+			"f",
+			"d",
+			"b",
+			"g",
+			"e",
+		},
+		"guitar": {
 			"f",
 			"d",
 			"b",
@@ -514,37 +542,47 @@ func newGameEngine() *gameEngine {
 	width, height := img.Size()
 	g.sprites["record"] = &sprite{
 		image:     img,
-		frame:     0,
-		numFrames: 1,
-		x:         screenWidth - float64(width) - 10,
-		y:         65,
-		width:     width,
+		numFrames: 2,
+		x:         screenWidth - float64(width) - 5,
+		y:         68,
+		width:     width / 2,
 		height:    height,
-		speed:     5,
+		speed:     20,
+		playing:   true,
 	}
 
 	img = loadImage("images/drummer.png")
+	width, height = img.Size()
 	g.sprites["drummer"] = &sprite{
 		image:     img,
-		frame:     0,
 		numFrames: 4,
 		x:         218,
 		y:         100,
-		width:     53,
-		height:    47,
+		width:     width / 4,
+		height:    height,
 		speed:     5,
 	}
 	img = loadImage("images/pianoman.png")
 	width, height = img.Size()
 	g.sprites["pianoman"] = &sprite{
 		image:     img,
-		frame:     0,
-		numFrames: 1,
+		numFrames: 4,
 		x:         148,
 		y:         97,
-		width:     width,
+		width:     width / 4,
 		height:    height,
-		speed:     5,
+		speed:     10,
+	}
+	img = loadImage("images/guitarist.png")
+	width, height = img.Size()
+	g.sprites["guitarist"] = &sprite{
+		image:     img,
+		numFrames: 4,
+		x:         60,
+		y:         110,
+		width:     width / 4,
+		height:    height,
+		speed:     10,
 	}
 
 	return g
