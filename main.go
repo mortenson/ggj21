@@ -259,7 +259,7 @@ func (g *gameEngine) Update() error {
 			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 				g.currentGroup = "drum"
 				g.dialogue = []string{
-					"Can everyone, like, play quiter today?",
+					"Can everyone, like, play quieter today?",
 					"Why did i ever learn drums...",
 				}
 			}
@@ -454,7 +454,7 @@ func newGameEngine() *gameEngine {
 				break
 			}
 		}
-		g.sequenceRules[group][audioIndex] = rand.Intn(6) + 1
+		g.sequenceRules[group][audioIndex] = rand.Intn(4) + 1
 	}
 
 	// g.sequences["drum"] = [][]int{
@@ -470,46 +470,46 @@ func newGameEngine() *gameEngine {
 		"drum": []string{
 			"audio/drum/kick.wav",
 			"audio/drum/snare.wav",
-			"audio/drum/stick.wav",
 			"audio/drum/hihat.wav",
-			"audio/drum/hihat_open.wav",
+			"audio/drum/clap.wav",
+			"audio/drum/bell.wav",
 		},
 		"piano": []string{
-			"audio/piano/f.wav",
+			"audio/piano/c.wav",
 			"audio/piano/d.wav",
-			"audio/piano/b.wav",
-			"audio/piano/g.wav",
 			"audio/piano/e.wav",
+			"audio/piano/g.wav",
+			"audio/piano/a.wav",
 		},
 		"guitar": []string{
-			"audio/piano/f.wav",
-			"audio/piano/d.wav",
-			"audio/piano/b.wav",
-			"audio/piano/g.wav",
-			"audio/piano/e.wav",
+			"audio/guitar/c.wav",
+			"audio/guitar/d.wav",
+			"audio/guitar/e.wav",
+			"audio/guitar/g.wav",
+			"audio/guitar/a.wav",
 		},
 	}
 	g.audioLabels = map[string][]string{
 		"drum": {
-			"Kick",
-			"Snare",
-			"Stick",
-			"HiHat",
-			"OpenHat",
+			"kick",
+			"snare",
+			"hihat",
+			"clap",
+			"bell",
 		},
 		"piano": {
-			"f",
+			"c",
 			"d",
-			"b",
-			"g",
 			"e",
+			"g",
+			"a",
 		},
 		"guitar": {
-			"f",
+			"c",
 			"d",
-			"b",
-			"g",
 			"e",
+			"g",
+			"a",
 		},
 	}
 	for group, fileNames := range audioFiles {
