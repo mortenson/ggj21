@@ -57,7 +57,8 @@ type gameEngine struct {
 	frame         int
 	audio         map[string][]*audio.Player
 	audioLabels   map[string][]string
-	sequenceRules map[string]map[int]int
+	sequenceRules map[string][][2]int
+	rulesMet      bool
 	sequences     map[string][][]int
 	groups        []string
 	startTime     time.Time
@@ -135,14 +136,12 @@ func (g *gameEngine) Draw(screen *ebiten.Image) {
 		sequenceIndex := g.beatCounter % 16
 		for i, sequence := range g.sequences[g.currentGroup] {
 			for _, audioIndex := range sequence {
-				if audioIndex != -1 {
-					cursor := [2]int{i, audioIndex}
-					clr := color.RGBA{255, 0, 255, 150}
-					if sequenceIndex == i {
-						clr = color.RGBA{255, 0, 255, 255}
-					}
-					ebitenutil.DrawRect(screen, rects[cursor].x, rects[cursor].y, rects[cursor].width, rects[cursor].height, clr)
+				cursor := [2]int{i, audioIndex}
+				clr := color.RGBA{255, 0, 255, 150}
+				if sequenceIndex == i {
+					clr = color.RGBA{255, 0, 255, 255}
 				}
+				ebitenutil.DrawRect(screen, rects[cursor].x, rects[cursor].y, rects[cursor].width, rects[cursor].height, clr)
 			}
 		}
 		cursorRect, ok := rects[g.cursor]
@@ -150,6 +149,12 @@ func (g *gameEngine) Draw(screen *ebiten.Image) {
 			ebitenutil.DrawRect(screen, cursorRect.x, cursorRect.y, cursorRect.width, cursorRect.height, color.RGBA{255, 255, 0, 150})
 		}
 		ebitenutil.DrawRect(screen, offsetX+incrementX*float64(sequenceIndex)-2.5, 60, 5, 5, color.RGBA{255, 255, 0, 150})
+	}
+	for i, pair := range g.sequenceRules[g.currentGroup] {
+		text.Draw(screen, fmt.Sprintf("%s at least %d times ✅✔✓☑", g.audioLabels[g.currentGroup][pair[0]], pair[1]), bitmapfont.Gothic10r, 10, 75+(i*12), color.White)
+	}
+	if g.rulesMet {
+		g.sprites["record"].draw(screen)
 	}
 }
 
@@ -243,8 +248,43 @@ func (g *gameEngine) Update() error {
 			g.dialogueIndex = 0
 			g.dialogueOpen = true
 			g.dialogue = []string{}
-			for audioIndex, count := range g.sequenceRules[g.currentGroup] {
-				g.dialogue = append(g.dialogue, fmt.Sprintf("I remember %s being played %d times", g.audioLabels[g.currentGroup][audioIndex], count))
+			for _, pair := range g.sequenceRules[g.currentGroup] {
+				g.dialogue = append(g.dialogue, fmt.Sprintf("I remember %s being played at least %d times", g.audioLabels[g.currentGroup][pair[0]], pair[1]))
+			}
+		}
+		counts := map[string]map[int]int{}
+		for _, group := range g.groups {
+			counts[group] = map[int]int{}
+			for _, audioIndexes := range g.sequences[group] {
+				for _, audioIndex := range audioIndexes {
+					_, ok := counts[group][audioIndex]
+					if !ok {
+						counts[group][audioIndex] = 0
+					}
+					counts[group][audioIndex]++
+				}
+			}
+		}
+		rulesMet := true
+		for group, sequenceRule := range g.sequenceRules {
+			for _, pair := range sequenceRule {
+				realCount, ok := counts[group][pair[0]]
+				if !ok || realCount < pair[1] {
+					rulesMet = false
+					break
+				}
+			}
+		}
+		g.rulesMet = rulesMet
+		if g.rulesMet && isColliding(mouseRect, g.sprites["record"].getRect()) && ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
+			g.playSequence()
+			g.dialogueIndex = 0
+			g.dialogueOpen = true
+			g.dialogue = []string{
+				"Yeah, this sounds right. Let's record!",
+				"Sure, but then we're getting burgers.",
+				"And taking naps.",
+				"[You win! Does your jam sound good?]",
 			}
 		}
 	}
@@ -266,9 +306,7 @@ func (g *gameEngine) sequencer() {
 				sequenceIndex := beatCounter % 16
 				for _, group := range g.groups {
 					for _, audioIndex := range g.sequences[group][sequenceIndex] {
-						if audioIndex != -1 {
-							go g.playAudio(group, audioIndex)
-						}
+						go g.playAudio(group, audioIndex)
 					}
 				}
 			}
@@ -315,7 +353,7 @@ func newGameEngine() *gameEngine {
 		audioLabels:   map[string][]string{},
 		groups:        []string{"drum", "piano"},
 		sequences:     map[string][][]int{},
-		sequenceRules: map[string]map[int]int{},
+		sequenceRules: map[string][][2]int{},
 		currentGroup:  "",
 		beatCounter:   0,
 		cursor:        [2]int{-1, -1},
@@ -341,14 +379,11 @@ func newGameEngine() *gameEngine {
 	for _, group := range g.groups {
 		g.sequences[group] = make([][]int, 16)
 		for i := 0; i < 16; i++ {
-			g.sequences[group][i] = make([]int, 5)
-			for j := 0; j < 5; j++ {
-				g.sequences[group][i][j] = -1
-			}
+			g.sequences[group][i] = []int{}
 		}
-		g.sequenceRules[group] = map[int]int{}
+		g.sequenceRules[group] = [][2]int{}
 		audioIndex := rand.Intn(5)
-		g.sequenceRules[group][audioIndex] = rand.Intn(9) + 1
+		g.sequenceRules[group] = append(g.sequenceRules[group], [2]int{audioIndex, rand.Intn(6) + 1})
 		for {
 			newIndex := rand.Intn(5)
 			if newIndex != audioIndex {
@@ -356,7 +391,7 @@ func newGameEngine() *gameEngine {
 				break
 			}
 		}
-		g.sequenceRules[group][audioIndex] = rand.Intn(9) + 1
+		g.sequenceRules[group] = append(g.sequenceRules[group], [2]int{audioIndex, rand.Intn(6) + 1})
 	}
 
 	// g.sequences["drum"] = [][]int{
@@ -426,8 +461,20 @@ func newGameEngine() *gameEngine {
 	g.images["bandroom"] = loadImage("images/bandroom.png")
 	g.images["menubox"] = loadImage("images/menubox.png")
 
-	img := loadImage("images/drummer.png")
+	img := loadImage("images/record.png")
 	width, height := img.Size()
+	g.sprites["record"] = &sprite{
+		image:     img,
+		frame:     0,
+		numFrames: 1,
+		x:         screenWidth - float64(width) - 10,
+		y:         65,
+		width:     width,
+		height:    height,
+	}
+
+	img = loadImage("images/drummer.png")
+	width, height = img.Size()
 	g.sprites["drummer"] = &sprite{
 		image:     img,
 		frame:     0,
