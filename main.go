@@ -133,16 +133,10 @@ func (g *gameEngine) Draw(screen *ebiten.Image) {
 	incrementX := (screenWidth - offsetX) / 16
 	incrementY := 50.0 / 5
 	offsetY := incrementY
-	for i := 0; i < 16; i++ {
-		clr := color.RGBA{255, 255, 255, 255}
-		if int(i)%4 == 0 {
-			clr = color.RGBA{100, 255, 0, 150}
-		}
-		ebitenutil.DrawLine(screen, offsetX+(float64(i)*incrementX), 0, offsetX+(float64(i)*incrementX), 50, clr)
-	}
+	lineClr := color.RGBA{234, 212, 170, 255}
 	for i := 0; i < 5; i++ {
 		y := offsetY + (incrementY * float64(i))
-		ebitenutil.DrawLine(screen, offsetX, y, screenWidth-incrementX, y, color.White)
+		ebitenutil.DrawLine(screen, offsetX, y, screenWidth-incrementX, y, lineClr)
 		audioLabel := g.audioLabels[g.currentGroup][i]
 		count, ok := g.sequenceRules[g.currentGroup][i]
 		if ok {
@@ -151,24 +145,33 @@ func (g *gameEngine) Draw(screen *ebiten.Image) {
 		textBounds := text.BoundString(bitmapfont.Gothic10r, audioLabel)
 		text.Draw(screen, audioLabel, bitmapfont.Gothic10r, int(offsetX)-textBounds.Max.X-8, int(y)+3, color.White)
 	}
+	for i := 0; i < 16; i++ {
+		clr := lineClr
+		if int(i)%4 == 0 {
+			clr = color.RGBA{115, 62, 57, 255}
+		}
+		ebitenutil.DrawLine(screen, offsetX+(float64(i)*incrementX), 0, offsetX+(float64(i)*incrementX), 50, clr)
+	}
 	if g.beatCounter != -1 {
 		rects := g.getSequenceRects()
 		sequenceIndex := g.beatCounter % 16
 		for i, sequence := range g.sequences[g.currentGroup] {
 			for _, audioIndex := range sequence {
 				cursor := [2]int{i, audioIndex}
-				clr := color.RGBA{255, 0, 255, 150}
-				if sequenceIndex == i {
-					clr = color.RGBA{255, 0, 255, 255}
-				}
-				ebitenutil.DrawRect(screen, rects[cursor].x, rects[cursor].y, rects[cursor].width, rects[cursor].height, clr)
+				op := &ebiten.DrawImageOptions{}
+				op.GeoM.Translate(rects[cursor].x, rects[cursor].y)
+				screen.DrawImage(g.images["note"], op)
 			}
 		}
 		cursorRect, ok := rects[g.cursor]
 		if ok {
-			ebitenutil.DrawRect(screen, cursorRect.x, cursorRect.y, cursorRect.width, cursorRect.height, color.RGBA{255, 255, 0, 150})
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Translate(cursorRect.x, cursorRect.y)
+			screen.DrawImage(g.images["noteCursor"], op)
 		}
-		ebitenutil.DrawRect(screen, offsetX+incrementX*float64(sequenceIndex)-2.5, 60, 5, 5, color.RGBA{255, 255, 0, 150})
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(offsetX+incrementX*float64(sequenceIndex)-2.5, 60)
+		screen.DrawImage(g.images["sequenceCursor"], op)
 	}
 	if g.rulesMet {
 		g.sprites["record"].draw(screen)
@@ -537,6 +540,9 @@ func newGameEngine() *gameEngine {
 
 	g.images["bandroom"] = loadImage("images/bandroom.png")
 	g.images["menubox"] = loadImage("images/menubox.png")
+	g.images["noteCursor"] = loadImage("images/noteCursor.png")
+	g.images["note"] = loadImage("images/note.png")
+	g.images["sequenceCursor"] = loadImage("images/sequenceCursor.png")
 
 	img := loadImage("images/record.png")
 	width, height := img.Size()
