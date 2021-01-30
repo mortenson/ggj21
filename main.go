@@ -57,7 +57,7 @@ type gameEngine struct {
 	frame         int
 	audio         map[string][]*audio.Player
 	audioLabels   map[string][]string
-	sequenceRules map[string][][2]int
+	sequenceRules map[string]map[int]int
 	rulesMet      bool
 	sequences     map[string][][]int
 	groups        []string
@@ -71,6 +71,7 @@ type gameEngine struct {
 	dialogueOpen  bool
 	dialogue      []string
 	dialogueIndex int
+	dialogueShown map[string]bool
 }
 
 type rect struct {
@@ -81,6 +82,9 @@ type rect struct {
 }
 
 func (g *gameEngine) playSequence() {
+	if g.playing {
+		return
+	}
 	g.startTime = time.Now()
 	g.beatCounter = -1
 	g.playing = true
@@ -108,12 +112,14 @@ func (g *gameEngine) Draw(screen *ebiten.Image) {
 		text.Draw(screen, "ENTER", bitmapfont.Gothic10r, screenWidth-8-textBounds.Max.X, screenHeight-8, color.Black)
 	}
 	if g.currentGroup == "" {
-		// if !g.dialogueOpen {
-		// 	text.Draw(screen, "Click a band member", bitmapfont.Gothic10r, 5, screenHeight-5, color.Black)
-		// }
+		if !g.dialogueOpen {
+			text.Draw(screen, "Click a band member!", bitmapfont.Gothic10r, 5, screenHeight-2, color.Black)
+		}
 		return
 	}
-	// text.Draw(screen, "Play/pause (ENTER)", bitmapfont.Gothic10r, 5, screenHeight-5, color.Black)
+	if !g.dialogueOpen {
+		text.Draw(screen, "(ENTER) Play/Pause", bitmapfont.Gothic10r, 5, screenHeight-2, color.Black)
+	}
 	offsetX := 55.0
 	incrementX := (screenWidth - offsetX) / 16
 	incrementY := 50.0 / 5
@@ -128,8 +134,13 @@ func (g *gameEngine) Draw(screen *ebiten.Image) {
 	for i := 0; i < 5; i++ {
 		y := offsetY + (incrementY * float64(i))
 		ebitenutil.DrawLine(screen, offsetX, y, screenWidth-incrementX, y, color.White)
-		textBounds := text.BoundString(bitmapfont.Gothic10r, g.audioLabels[g.currentGroup][i])
-		text.Draw(screen, g.audioLabels[g.currentGroup][i], bitmapfont.Gothic10r, int(offsetX)-textBounds.Max.X-8, int(y)+3, color.White)
+		audioLabel := g.audioLabels[g.currentGroup][i]
+		count, ok := g.sequenceRules[g.currentGroup][i]
+		if ok {
+			audioLabel = fmt.Sprintf("(%d) %s", count, audioLabel)
+		}
+		textBounds := text.BoundString(bitmapfont.Gothic10r, audioLabel)
+		text.Draw(screen, audioLabel, bitmapfont.Gothic10r, int(offsetX)-textBounds.Max.X-8, int(y)+3, color.White)
 	}
 	if g.beatCounter != -1 {
 		rects := g.getSequenceRects()
@@ -149,9 +160,6 @@ func (g *gameEngine) Draw(screen *ebiten.Image) {
 			ebitenutil.DrawRect(screen, cursorRect.x, cursorRect.y, cursorRect.width, cursorRect.height, color.RGBA{255, 255, 0, 150})
 		}
 		ebitenutil.DrawRect(screen, offsetX+incrementX*float64(sequenceIndex)-2.5, 60, 5, 5, color.RGBA{255, 255, 0, 150})
-	}
-	for i, pair := range g.sequenceRules[g.currentGroup] {
-		text.Draw(screen, fmt.Sprintf("%s at least %d times ✅✔✓☑", g.audioLabels[g.currentGroup][pair[0]], pair[1]), bitmapfont.Gothic10r, 10, 75+(i*12), color.White)
 	}
 	if g.rulesMet {
 		g.sprites["record"].draw(screen)
@@ -235,22 +243,27 @@ func (g *gameEngine) Update() error {
 				g.sequences[g.currentGroup][g.cursor[0]] = append(g.sequences[g.currentGroup][g.cursor[0]], g.cursor[1])
 			}
 		}
-		showDialogue := false
 		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && isColliding(mouseRect, g.sprites["drummer"].getRect()) {
 			g.currentGroup = "drum"
-			showDialogue = true
+			g.dialogue = []string{
+				"Can everyone, like, play quiter today?",
+				"Why did i ever learn drums...",
+			}
 		}
 		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && isColliding(mouseRect, g.sprites["pianoman"].getRect()) {
 			g.currentGroup = "piano"
-			showDialogue = true
-		}
-		if showDialogue {
-			g.dialogueIndex = 0
-			g.dialogueOpen = true
-			g.dialogue = []string{}
-			for _, pair := range g.sequenceRules[g.currentGroup] {
-				g.dialogue = append(g.dialogue, fmt.Sprintf("I remember %s being played at least %d times", g.audioLabels[g.currentGroup][pair[0]], pair[1]))
+			g.dialogue = []string{
+				"Keep your head in the game",
+				"What key are we even in?",
 			}
+		}
+		if g.currentGroup != "" && !g.dialogueShown[g.currentGroup] {
+			g.dialogueOpen = true
+			g.dialogueIndex = 0
+			for audioIndex, count := range g.sequenceRules[g.currentGroup] {
+				g.dialogue = append(g.dialogue, fmt.Sprintf("I remember %s being played at least %d times", g.audioLabels[g.currentGroup][audioIndex], count))
+			}
+			g.dialogueShown[g.currentGroup] = true
 		}
 		counts := map[string]map[int]int{}
 		for _, group := range g.groups {
@@ -267,16 +280,24 @@ func (g *gameEngine) Update() error {
 		}
 		rulesMet := true
 		for group, sequenceRule := range g.sequenceRules {
-			for _, pair := range sequenceRule {
-				realCount, ok := counts[group][pair[0]]
-				if !ok || realCount < pair[1] {
+			for audioIndex, count := range sequenceRule {
+				realCount, ok := counts[group][audioIndex]
+				if !ok || realCount < count {
 					rulesMet = false
 					break
 				}
 			}
 		}
 		g.rulesMet = rulesMet
-		if g.rulesMet && isColliding(mouseRect, g.sprites["record"].getRect()) && ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
+		if g.rulesMet && !g.dialogueShown["record"] {
+			g.dialogueIndex = 0
+			g.dialogueOpen = true
+			g.dialogue = []string{
+				"[You're hitting all the right notes!]",
+				"[Press the \"REC\" button when you're done.]",
+			}
+			g.dialogueShown["record"] = true
+		} else if g.rulesMet && isColliding(mouseRect, g.sprites["record"].getRect()) && ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
 			g.playSequence()
 			g.dialogueIndex = 0
 			g.dialogueOpen = true
@@ -353,7 +374,7 @@ func newGameEngine() *gameEngine {
 		audioLabels:   map[string][]string{},
 		groups:        []string{"drum", "piano"},
 		sequences:     map[string][][]int{},
-		sequenceRules: map[string][][2]int{},
+		sequenceRules: map[string]map[int]int{},
 		currentGroup:  "",
 		beatCounter:   0,
 		cursor:        [2]int{-1, -1},
@@ -374,16 +395,20 @@ func newGameEngine() *gameEngine {
 			"[Set your own challenges and get creative]",
 		},
 		dialogueIndex: 0,
+		dialogueShown: map[string]bool{
+			"record": false,
+		},
 	}
 
 	for _, group := range g.groups {
+		g.dialogueShown[group] = false
 		g.sequences[group] = make([][]int, 16)
 		for i := 0; i < 16; i++ {
 			g.sequences[group][i] = []int{}
 		}
-		g.sequenceRules[group] = [][2]int{}
+		g.sequenceRules[group] = map[int]int{}
 		audioIndex := rand.Intn(5)
-		g.sequenceRules[group] = append(g.sequenceRules[group], [2]int{audioIndex, rand.Intn(6) + 1})
+		g.sequenceRules[group][audioIndex] = rand.Intn(6) + 1
 		for {
 			newIndex := rand.Intn(5)
 			if newIndex != audioIndex {
@@ -391,7 +416,7 @@ func newGameEngine() *gameEngine {
 				break
 			}
 		}
-		g.sequenceRules[group] = append(g.sequenceRules[group], [2]int{audioIndex, rand.Intn(6) + 1})
+		g.sequenceRules[group][audioIndex] = rand.Intn(6) + 1
 	}
 
 	// g.sequences["drum"] = [][]int{
