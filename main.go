@@ -24,7 +24,6 @@ import (
 const (
 	screenWidth  = 320
 	screenHeight = 180
-	bpm          = 120
 )
 
 type sprite struct {
@@ -80,6 +79,7 @@ type gameEngine struct {
 	dialogue      []string
 	dialogueIndex int
 	dialogueShown map[string]bool
+	bpm           int
 }
 
 type rect struct {
@@ -127,7 +127,7 @@ func (g *gameEngine) Draw(screen *ebiten.Image) {
 		return
 	}
 	if !g.dialogueOpen {
-		text.Draw(screen, "(ENTER) Play/Pause", bitmapfont.Gothic10r, 5, screenHeight-2, color.Black)
+		text.Draw(screen, "(ENTER) Play/Pause - (UP/DOWN) Change BPM", bitmapfont.Gothic10r, 5, screenHeight-2, color.Black)
 	}
 	offsetX := 55.0
 	incrementX := (screenWidth - offsetX) / 16
@@ -225,6 +225,14 @@ func (g *gameEngine) Update() error {
 				g.stopSequence()
 			} else {
 				g.playSequence()
+			}
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyUp) {
+			g.bpm += 10
+		} else if inpututil.IsKeyJustPressed(ebiten.KeyDown) {
+			g.bpm -= 10
+			if g.bpm < 50 {
+				g.bpm = 50
 			}
 		}
 		mouseX, mouseY := ebiten.CursorPosition()
@@ -363,7 +371,7 @@ func (g *gameEngine) sequencer() {
 	for {
 		if g.playing {
 			elapsed := time.Now().Sub(g.startTime)
-			bps := 60 / float64(bpm) / 4
+			bps := 60 / float64(g.bpm) / 4
 			beatCounter := int(elapsed.Seconds()/bps) % 16
 			if beatCounter != g.beatCounter {
 				for _, group := range g.groups {
@@ -421,6 +429,7 @@ func newGameEngine() *gameEngine {
 		cursor:        [2]int{-1, -1},
 		images:        map[string]*ebiten.Image{},
 		sprites:       map[string]*sprite{},
+		bpm:           120,
 		dialogueOpen:  true,
 		dialogue: []string{
 			"Can't believe we have to record today...",
