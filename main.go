@@ -127,7 +127,7 @@ func (g *gameEngine) Draw(screen *ebiten.Image) {
 		return
 	}
 	if !g.dialogueOpen {
-		text.Draw(screen, "(ENTER) Play/Pause - (UP/DOWN) Change BPM", bitmapfont.Gothic10r, 5, screenHeight-2, color.Black)
+		text.Draw(screen, "(ENTER) Play/Pause - (UP/DOWN) Change Speed", bitmapfont.Gothic10r, 5, screenHeight-2, color.Black)
 	}
 	offsetX := 55.0
 	incrementX := (screenWidth - offsetX) / 16
