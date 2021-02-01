@@ -80,6 +80,7 @@ type gameEngine struct {
 	dialogueIndex int
 	dialogueShown map[string]bool
 	bpm           int
+	titleScreen   bool
 }
 
 type rect struct {
@@ -108,6 +109,13 @@ func (g *gameEngine) playAudio(group string, index int) {
 }
 
 func (g *gameEngine) Draw(screen *ebiten.Image) {
+	if g.titleScreen {
+		screen.DrawImage(g.images["title"], &ebiten.DrawImageOptions{})
+		text.Draw(screen, "Press ENTER to begin", bitmapfont.Gothic12r, 8, screenHeight-5, color.RGBA{163, 39, 50, 255})
+		textBounds := text.BoundString(bitmapfont.Gothic10r, "Title art by @inkbirb")
+		text.Draw(screen, "Title art by @inkbirb", bitmapfont.Gothic10r, screenWidth-textBounds.Max.X-3, screenHeight-3, color.Black)
+		return
+	}
 	screen.DrawImage(g.images["bandroom"], &ebiten.DrawImageOptions{})
 	g.sprites["pianoman"].draw(screen)
 	g.sprites["drummer"].draw(screen)
@@ -209,6 +217,12 @@ func isColliding(r1, r2 rect) bool {
 }
 
 func (g *gameEngine) Update() error {
+	if g.titleScreen {
+		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+			g.titleScreen = false
+		}
+		return nil
+	}
 	for _, sprite := range g.sprites {
 		sprite.update(g.frame)
 	}
@@ -448,6 +462,7 @@ func newGameEngine() *gameEngine {
 		dialogueShown: map[string]bool{
 			"record": false,
 		},
+		titleScreen: true,
 	}
 
 	for _, group := range g.groups {
@@ -552,6 +567,7 @@ func newGameEngine() *gameEngine {
 	g.images["noteCursor"] = loadImage("images/noteCursor.png")
 	g.images["note"] = loadImage("images/note.png")
 	g.images["sequenceCursor"] = loadImage("images/sequenceCursor.png")
+	g.images["title"] = loadImage("images/title.png")
 
 	img := loadImage("images/record.png")
 	width, height := img.Size()
